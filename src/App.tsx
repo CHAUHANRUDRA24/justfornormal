@@ -11,13 +11,28 @@ import { EditExpenseModal } from './components/EditExpenseModal';
 import { EditMonthlyAmountModal } from './components/EditMonthlyAmountModal';
 import { FamilyAuthScreen } from './components/FamilyAuthScreen';
 import { GoogleSheetsConfigModal } from './components/GoogleSheetsConfigModal';
-import { Expense } from './types';
+import { Expense, UserProfile } from './types';
 
 const AUTH_KEY = 'family_expense_auth';
+const USER_KEY = 'family_expense_user';
+
+function getStoredUser(): UserProfile | null {
+  try {
+    const raw = localStorage.getItem(USER_KEY);
+    if (raw) return JSON.parse(raw);
+    if (localStorage.getItem(AUTH_KEY) === 'true') {
+      return { username: 'Shani', name: 'Shani (Dad)', role: 'dad' };
+    }
+  } catch (e) {
+    console.error('Failed to parse stored user:', e);
+  }
+  return null;
+}
 
 export default function App() {
+  const [currentUser, setCurrentUser] = useState<UserProfile | null>(getStoredUser);
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
-    return typeof window !== 'undefined' ? localStorage.getItem(AUTH_KEY) === 'true' : false;
+    return typeof window !== 'undefined' ? (localStorage.getItem(AUTH_KEY) === 'true' && !!getStoredUser()) : false;
   });
 
   const {
@@ -25,6 +40,7 @@ export default function App() {
     setSelectedMonth,
     allRecordedMonths,
     isInitialized,
+    isInitialLoading,
     monthlyAmount,
     totalSpent,
     remainingMoney,
@@ -40,7 +56,7 @@ export default function App() {
     deleteExpense,
     resetMonth,
     refreshData,
-  } = useExpenseTracker();
+  } = useExpenseTracker(currentUser);
 
   // Modal states
   const [isAddExpenseOpen, setIsAddExpenseOpen] = useState(false);
@@ -49,14 +65,18 @@ export default function App() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
 
-  const handleLogin = () => {
+  const handleLogin = (user: UserProfile) => {
     localStorage.setItem(AUTH_KEY, 'true');
+    localStorage.setItem(USER_KEY, JSON.stringify(user));
+    setCurrentUser(user);
     setIsAuthenticated(true);
     refreshData(true);
   };
 
   const handleLogout = () => {
     localStorage.removeItem(AUTH_KEY);
+    localStorage.removeItem(USER_KEY);
+    setCurrentUser(null);
     setIsAuthenticated(false);
   };
 
@@ -78,7 +98,17 @@ export default function App() {
     );
   }
 
-  // 2. If no monthly budget set for the selected month, prompt for initial monthly amount (Start Month)
+  // 2. Initial sync check while verifying shared Google Sheets balance
+  if (isInitialLoading && !isInitialized && isConfigured) {
+    return (
+      <div className="min-h-screen bg-slate-100/80 flex flex-col items-center justify-center p-6 text-slate-700">
+        <div className="w-10 h-10 border-4 border-emerald-600 border-t-transparent rounded-full animate-spin mb-4" />
+        <p className="text-sm font-semibold text-slate-600 tracking-wide">Syncing shared family budget...</p>
+      </div>
+    );
+  }
+
+  // 3. If no monthly budget set for the selected month, prompt for initial monthly amount (Start Month)
   if (!isInitialized) {
     return (
       <>
@@ -107,6 +137,7 @@ export default function App() {
         onResetMonth={resetMonth}
         hasData={isInitialized}
         syncStatus={syncStatus}
+        currentUser={currentUser}
         onRefresh={() => refreshData(true)}
         onOpenSettings={() => setIsSettingsOpen(true)}
         onLogout={handleLogout}

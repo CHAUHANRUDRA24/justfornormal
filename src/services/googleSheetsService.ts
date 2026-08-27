@@ -67,29 +67,48 @@ async function callAppsScript(action: string, payload: Record<string, any> = {})
   }
 }
 
+export interface LoginResponse {
+  success: boolean;
+  error?: string;
+  username?: string;
+  name?: string;
+  role?: 'dad' | 'me';
+}
+
 export const googleSheetsService = {
+  // 0. Verify Login
+  async login(username: string, password: string): Promise<LoginResponse> {
+    return await callAppsScript('LOGIN', { username, password });
+  },
+
   // 1. Fetch monthly data & expenses
   async getMonthlyData(month: string): Promise<MonthlyDataResponse> {
     return await callAppsScript('GET_MONTHLY_DATA', { month });
   },
 
   // 2. Set monthly budget amount / Start Month
-  async setMonthlyAmount(month: string, amount: number): Promise<MonthlyDataResponse> {
-    return await callAppsScript('SET_MONTHLY_AMOUNT', { month, amount });
+  async startMonth(month: string, amount: number, username?: string): Promise<MonthlyDataResponse> {
+    return await callAppsScript('START_MONTH', { month, amount, username });
+  },
+
+  async setMonthlyAmount(month: string, amount: number, username?: string): Promise<MonthlyDataResponse> {
+    return await callAppsScript('SET_MONTHLY_AMOUNT', { month, amount, username });
   },
 
   // 3. Add Money (Increment monthly total cumulatively)
-  async addMoney(month: string, amount: number): Promise<MonthlyDataResponse> {
-    return await callAppsScript('ADD_MONEY', { month, amount });
+  async addMoney(month: string, amount: number, username?: string): Promise<MonthlyDataResponse> {
+    return await callAppsScript('ADD_MONEY', { month, amount, username });
   },
 
-  // 4. Add an expense
+  // 4. Add an expense with created_by
   async addExpense(expense: {
     month: string;
     amount: number;
     category: string;
     description: string;
     date?: string;
+    created_by?: string;
+    username?: string;
   }): Promise<MonthlyDataResponse> {
     return await callAppsScript('ADD_EXPENSE', expense);
   },
@@ -102,6 +121,8 @@ export const googleSheetsService = {
     category: string;
     description: string;
     date?: string;
+    created_by?: string;
+    username?: string;
   }): Promise<MonthlyDataResponse> {
     return await callAppsScript('UPDATE_EXPENSE', expense);
   },

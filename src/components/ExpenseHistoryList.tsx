@@ -1,12 +1,33 @@
 import React from 'react';
 import { Transaction } from '../types';
 import { formatINR, formatDateLabel, getSmartEmoji } from '../utils/format';
-import { Edit2, Trash2, ShoppingBag } from 'lucide-react';
+import { Edit2, Trash2, ShoppingBag, User } from 'lucide-react';
 
 interface ExpenseHistoryListProps {
   expenses: Transaction[];
   onEditExpense: (expense: Transaction) => void;
   onDeleteExpense: (id: string) => void;
+}
+
+function getCreatedByBadge(created_by?: string) {
+  if (!created_by) return null;
+  const c = created_by.trim().toLowerCase();
+  if (c === 'shani' || c === 'dad') {
+    return {
+      label: 'Added by Dad',
+      badgeClass: 'bg-amber-50 text-amber-700 border-amber-200/60',
+    };
+  }
+  if (c === 'rudra' || c === 'me') {
+    return {
+      label: 'Added by Me',
+      badgeClass: 'bg-indigo-50 text-indigo-700 border-indigo-200/60',
+    };
+  }
+  return {
+    label: `Added by ${created_by}`,
+    badgeClass: 'bg-slate-100 text-slate-700 border-slate-200/60',
+  };
 }
 
 export const ExpenseHistoryList: React.FC<ExpenseHistoryListProps> = ({
@@ -47,6 +68,7 @@ export const ExpenseHistoryList: React.FC<ExpenseHistoryListProps> = ({
       <div className="divide-y divide-slate-100">
         {expenses.map((expense) => {
           const emoji = getSmartEmoji(expense.description, expense.category);
+          const creatorInfo = getCreatedByBadge(expense.created_by);
 
           return (
             <div
@@ -55,7 +77,7 @@ export const ExpenseHistoryList: React.FC<ExpenseHistoryListProps> = ({
               className="py-3.5 first:pt-0 last:pb-0 flex items-center justify-between group hover:bg-slate-50/60 -mx-2 px-2 rounded-2xl transition-colors cursor-pointer"
               onClick={() => onEditExpense(expense)}
             >
-              {/* Left: Emoji + Category/Description + Date */}
+              {/* Left: Emoji + Category/Description + Date + Creator */}
               <div className="flex items-center gap-3 min-w-0 pr-2">
                 <div className="w-11 h-11 rounded-2xl bg-slate-100 flex items-center justify-center text-xl shrink-0 border border-slate-200/60">
                   {emoji}
@@ -69,10 +91,16 @@ export const ExpenseHistoryList: React.FC<ExpenseHistoryListProps> = ({
                       {formatDateLabel(expense.date)}
                     </span>
                   </div>
-                  <div className="flex items-center gap-1.5 mt-0.5">
+                  <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
                     <span className="text-[11px] font-medium text-slate-400">
                       {expense.category}
                     </span>
+                    {creatorInfo && (
+                      <span className={`inline-flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.2 rounded-md border ${creatorInfo.badgeClass}`}>
+                        <User className="w-2.5 h-2.5" />
+                        <span>{creatorInfo.label}</span>
+                      </span>
+                    )}
                   </div>
                 </div>
               </div>

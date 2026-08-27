@@ -1,5 +1,13 @@
 export type TransactionType = 'expense' | 'monthly_budget';
 
+export type AppUserRole = 'Shani' | 'Rudra';
+
+export interface UserProfile {
+  username: string;
+  name: string;
+  role: 'dad' | 'me';
+}
+
 export interface Transaction {
   id: string;
   amount: number;
@@ -9,6 +17,7 @@ export interface Transaction {
   date: string; // YYYY-MM-DD
   month: string; // YYYY-MM e.g. "2026-08"
   created_at: string; // ISO string
+  created_by?: string; // "Shani" (Dad) or "Rudra" (Me)
   user_id?: string;
 }
 

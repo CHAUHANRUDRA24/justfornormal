@@ -50,6 +50,13 @@ function doGet(e) {
 }
 
 function doPost(e) {
+  const lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(10000);
+  } catch (lockErr) {
+    return createJsonResponse({ success: false, error: 'Server busy, please retry in a moment.' });
+  }
+
   try {
     const { monthlySheet, expensesSheet } = getOrCreateSheets();
     let payload = {};
@@ -59,7 +66,10 @@ function doPost(e) {
       payload = e.parameter;
     }
     const action = payload.action || 'GET_MONTHLY_DATA';
-    if (action === 'START_MONTH' || action === 'SET_MONTHLY_AMOUNT') {
+    if (action === 'START_MONTH') {
+      return createJsonResponse(startMonth(monthlySheet, expensesSheet, payload.month, Number(payload.amount)));
+    }
+    if (action === 'SET_MONTHLY_AMOUNT') {
       return createJsonResponse(setMonthlyAmount(monthlySheet, expensesSheet, payload.month, Number(payload.amount)));
     }
     if (action === 'ADD_MONEY') {
@@ -73,6 +83,8 @@ function doPost(e) {
     return createJsonResponse({ success: false, error: 'Unknown action: ' + action });
   } catch (err) {
     return createJsonResponse({ success: false, error: err.toString() });
+  } finally {
+    lock.releaseLock();
   }
 }
 
@@ -106,6 +118,31 @@ function getMonthlyData(monthlySheet, expensesSheet, targetMonth) {
   const totalSpent = expenses.reduce((acc, curr) => acc + (Number(curr.amount) || 0), 0);
   const remainingMoney = Math.max(0, monthlyAmount - totalSpent);
   return { success: true, month: targetMonth, monthly_amount: monthlyAmount, total_available: monthlyAmount, monthlyBudgets: monthlyBudgets, expenses: expenses, totalSpent: totalSpent, remainingMoney: remainingMoney };
+}
+
+function startMonth(monthlySheet, expensesSheet, month, amount) {
+  if (!month || amount <= 0) return { success: false, error: 'Invalid month or amount' };
+  const monthlyRows = monthlySheet.getDataRange().getValues();
+  let foundRowIndex = -1;
+  let existingAmount = 0;
+  for (let i = 1; i < monthlyRows.length; i++) {
+    if (String(monthlyRows[i][0] || '').trim() === month) {
+      foundRowIndex = i + 1;
+      existingAmount = Number(monthlyRows[i][1]) || 0;
+      break;
+    }
+  }
+  const now = new Date().toISOString();
+  if (foundRowIndex > 0) {
+    if (existingAmount > 0) {
+      return getMonthlyData(monthlySheet, expensesSheet, month);
+    }
+    monthlySheet.getRange(foundRowIndex, 2).setValue(amount);
+    monthlySheet.getRange(foundRowIndex, 3).setValue(now);
+  } else {
+    monthlySheet.appendRow([month, amount, now]);
+  }
+  return getMonthlyData(monthlySheet, expensesSheet, month);
 }
 
 function setMonthlyAmount(monthlySheet, expensesSheet, month, amount) {

@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import { Expense } from '../types';
+import { Expense, UserProfile } from '../types';
 import { googleSheetsService, isGoogleSheetsConfigured } from '../services/googleSheetsService';
 
 export function getCurrentMonthKey(): string {
@@ -45,13 +45,16 @@ function saveCachedData(data: CachedData) {
 
 export type SyncStatus = 'synced' | 'syncing' | 'offline' | 'error';
 
-export function useExpenseTracker() {
+export function useExpenseTracker(currentUser?: UserProfile | null) {
   const [data, setData] = useState<CachedData>(loadCachedData);
   const [selectedMonth, setSelectedMonth] = useState<string>(getCurrentMonthKey());
   const [syncStatus, setSyncStatus] = useState<SyncStatus>('synced');
+  const [isInitialLoading, setIsInitialLoading] = useState<boolean>(() => isGoogleSheetsConfigured());
   const [error, setError] = useState<string | null>(null);
   const [isConfigured, setIsConfigured] = useState<boolean>(isGoogleSheetsConfigured());
   const isFetchingRef = useRef(false);
+
+  const activeUsername = currentUser?.username || 'Shani';
 
   // Sync cache to localStorage
   useEffect(() => {
@@ -71,6 +74,7 @@ export function useExpenseTracker() {
       if (!isGoogleSheetsConfigured()) {
         setIsConfigured(false);
         setSyncStatus('offline');
+        setIsInitialLoading(false);
         isFetchingRef.current = false;
         return;
       }
@@ -79,13 +83,19 @@ export function useExpenseTracker() {
       const res = await googleSheetsService.getMonthlyData('');
       
       if (res && res.success) {
-        setData((prev) => ({
-          monthlyBudgets: {
-            ...prev.monthlyBudgets,
-            ...(res.monthlyBudgets || (res.month && res.monthly_amount ? { [res.month]: res.monthly_amount } : {})),
-          },
-          expenses: res.expenses || prev.expenses,
-        }));
+        setData((prev) => {
+          const updatedBudgets = { ...prev.monthlyBudgets };
+          if (res.monthlyBudgets) {
+            Object.assign(updatedBudgets, res.monthlyBudgets);
+          }
+          if (res.month && typeof res.monthly_amount === 'number' && res.monthly_amount > 0) {
+            updatedBudgets[res.month] = res.monthly_amount;
+          }
+          return {
+            monthlyBudgets: updatedBudgets,
+            expenses: Array.isArray(res.expenses) ? res.expenses : prev.expenses,
+          };
+        });
         setSyncStatus('synced');
         setError(null);
       } else {
@@ -96,6 +106,7 @@ export function useExpenseTracker() {
       console.warn('Google Sheets sync warning:', err);
       setSyncStatus('error');
     } finally {
+      setIsInitialLoading(false);
       isFetchingRef.current = false;
     }
   }, []);
@@ -105,22 +116,28 @@ export function useExpenseTracker() {
     refreshData(true);
   }, [refreshData]);
 
-  // 2. Refresh on window focus (when switching between apps or phones)
+  // 2. Refresh on window focus and document visibility change (when switching between apps or returning to tab)
   useEffect(() => {
-    const handleFocus = () => {
-      refreshData(false);
+    const handleFocusOrVisible = () => {
+      if (document.visibilityState === 'visible') {
+        refreshData(false);
+      }
     };
-    window.addEventListener('focus', handleFocus);
-    return () => window.removeEventListener('focus', handleFocus);
+    window.addEventListener('focus', handleFocusOrVisible);
+    document.addEventListener('visibilitychange', handleFocusOrVisible);
+    return () => {
+      window.removeEventListener('focus', handleFocusOrVisible);
+      document.removeEventListener('visibilitychange', handleFocusOrVisible);
+    };
   }, [refreshData]);
 
-  // 3. Periodic background sync every 15 seconds
+  // 3. Periodic background sync every 12 seconds
   useEffect(() => {
     const interval = setInterval(() => {
       if (document.visibilityState === 'visible') {
         refreshData(false);
       }
-    }, 15000);
+    }, 12000);
     return () => clearInterval(interval);
   }, [refreshData]);
 
@@ -196,9 +213,19 @@ export function useExpenseTracker() {
       if (isGoogleSheetsConfigured()) {
         setSyncStatus('syncing');
         try {
-          const res = await googleSheetsService.setMonthlyAmount(selectedMonth, numAmount);
+          const res = await googleSheetsService.startMonth(selectedMonth, numAmount, activeUsername);
           if (res && res.success) {
             setSyncStatus('synced');
+            const serverAmount = res.monthly_amount || res.monthlyBudgets?.[selectedMonth] || numAmount;
+            setData((prev) => ({
+              ...prev,
+              monthlyBudgets: {
+                ...prev.monthlyBudgets,
+                ...(res.monthlyBudgets || {}),
+                [selectedMonth]: serverAmount,
+              },
+              expenses: res.expenses || prev.expenses,
+            }));
             refreshData(false);
           } else {
             setSyncStatus('error');
@@ -212,7 +239,7 @@ export function useExpenseTracker() {
 
       return { success: true };
     },
-    [selectedMonth, refreshData]
+    [selectedMonth, activeUsername, refreshData]
   );
 
   // Add Money (Cumulative: Total = Current Total + Additional Money)
@@ -237,9 +264,21 @@ export function useExpenseTracker() {
       if (isGoogleSheetsConfigured()) {
         setSyncStatus('syncing');
         try {
-          const res = await googleSheetsService.addMoney(selectedMonth, addVal);
+          const res = await googleSheetsService.addMoney(selectedMonth, addVal, activeUsername);
           if (res && res.success) {
             setSyncStatus('synced');
+            const serverAmount = res.monthly_amount || res.monthlyBudgets?.[selectedMonth];
+            if (serverAmount) {
+              setData((prev) => ({
+                ...prev,
+                monthlyBudgets: {
+                  ...prev.monthlyBudgets,
+                  ...(res.monthlyBudgets || {}),
+                  [selectedMonth]: serverAmount,
+                },
+                expenses: res.expenses || prev.expenses,
+              }));
+            }
             refreshData(false);
           } else {
             setSyncStatus('error');
@@ -253,7 +292,7 @@ export function useExpenseTracker() {
 
       return { success: true };
     },
-    [selectedMonth, refreshData]
+    [selectedMonth, activeUsername, refreshData]
   );
 
   // Set Monthly Budget
@@ -299,6 +338,7 @@ export function useExpenseTracker() {
         date: entryDate,
         month: entryMonth,
         created_at: new Date().toISOString(),
+        created_by: activeUsername,
       };
 
       // Optimistic update
@@ -317,6 +357,8 @@ export function useExpenseTracker() {
             category: newExpense.category,
             description: newExpense.description,
             date: entryDate,
+            created_by: activeUsername,
+            username: activeUsername,
           });
 
           if (res && res.success) {
@@ -342,7 +384,7 @@ export function useExpenseTracker() {
 
       return { success: true };
     },
-    [remainingMoney, selectedMonth, refreshData]
+    [remainingMoney, selectedMonth, activeUsername, refreshData]
   );
 
   // Edit Expense
@@ -403,6 +445,8 @@ export function useExpenseTracker() {
             category: updatedData.category || existing.category,
             description: updatedData.description.trim() || existing.category,
             date: entryDate,
+            created_by: existing.created_by || activeUsername,
+            username: activeUsername,
           });
 
           if (res && res.success) {
@@ -420,7 +464,7 @@ export function useExpenseTracker() {
 
       return { success: true };
     },
-    [data.expenses, remainingMoney, refreshData]
+    [data.expenses, remainingMoney, activeUsername, refreshData]
   );
 
   // Delete Expense
@@ -486,6 +530,7 @@ export function useExpenseTracker() {
     setSelectedMonth,
     allRecordedMonths,
     isInitialized,
+    isInitialLoading,
     monthlyAmount,
     totalSpent,
     remainingMoney,

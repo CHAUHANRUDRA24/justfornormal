@@ -17,6 +17,12 @@
 const MONTHLY_SHEET_NAME = 'Monthly Data';
 const EXPENSES_SHEET_NAME = 'Expenses';
 
+// Configured accounts
+const USERS = [
+  { username: 'Shani', aliases: ['shani', 'dad'], password: 'Shani@13', name: 'Shani (Dad)', role: 'dad' },
+  { username: 'Rudra', aliases: ['rudra', 'me'], password: 'Rudra@2006', name: 'Rudra (Me)', role: 'me' }
+];
+
 function getOrCreateSheets() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   
@@ -30,8 +36,14 @@ function getOrCreateSheets() {
   let expensesSheet = ss.getSheetByName(EXPENSES_SHEET_NAME);
   if (!expensesSheet) {
     expensesSheet = ss.insertSheet(EXPENSES_SHEET_NAME);
-    expensesSheet.appendRow(['id', 'month', 'amount', 'category', 'description', 'date', 'created_at']);
+    expensesSheet.appendRow(['id', 'month', 'amount', 'category', 'description', 'date', 'created_at', 'created_by']);
     expensesSheet.setFrozenRows(1);
+  } else {
+    // Ensure 8th column header is created_by if missing
+    const headers = expensesSheet.getRange(1, 1, 1, Math.max(expensesSheet.getLastColumn(), 8)).getValues()[0];
+    if (!headers[7] || headers[7] === '') {
+      expensesSheet.getRange(1, 8).setValue('created_by');
+    }
   }
   
   return { ss, monthlySheet, expensesSheet };
@@ -42,11 +54,30 @@ function createJsonResponse(data) {
     .setMimeType(ContentService.MimeType.JSON);
 }
 
+function verifyUser(username, password) {
+  const cleanUser = String(username || '').trim().toLowerCase();
+  const cleanPass = String(password || '').trim();
+  
+  for (let i = 0; i < USERS.length; i++) {
+    const u = USERS[i];
+    if (u.aliases.indexOf(cleanUser) !== -1 || u.username.toLowerCase() === cleanUser) {
+      if (u.password === cleanPass) {
+        return { success: true, username: u.username, name: u.name, role: u.role };
+      }
+    }
+  }
+  return { success: false, error: 'Invalid username or password' };
+}
+
 function doGet(e) {
   try {
     const { monthlySheet, expensesSheet } = getOrCreateSheets();
     const action = (e && e.parameter && e.parameter.action) || 'GET_MONTHLY_DATA';
     const month = (e && e.parameter && e.parameter.month) || '';
+    
+    if (action === 'LOGIN') {
+      return createJsonResponse(verifyUser(e.parameter.username, e.parameter.password));
+    }
     
     if (action === 'GET_MONTHLY_DATA') {
       return createJsonResponse(getMonthlyData(monthlySheet, expensesSheet, month));
@@ -63,6 +94,13 @@ function doGet(e) {
 }
 
 function doPost(e) {
+  const lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(10000);
+  } catch (lockErr) {
+    return createJsonResponse({ success: false, error: 'Server busy processing another request. Please retry.' });
+  }
+
   try {
     const { monthlySheet, expensesSheet } = getOrCreateSheets();
     let payload = {};
@@ -79,7 +117,15 @@ function doPost(e) {
     
     const action = payload.action || 'GET_MONTHLY_DATA';
     
-    if (action === 'START_MONTH' || action === 'SET_MONTHLY_AMOUNT') {
+    if (action === 'LOGIN') {
+      return createJsonResponse(verifyUser(payload.username, payload.password));
+    }
+    
+    if (action === 'START_MONTH') {
+      return createJsonResponse(startMonth(monthlySheet, expensesSheet, payload.month, Number(payload.amount)));
+    }
+
+    if (action === 'SET_MONTHLY_AMOUNT') {
       return createJsonResponse(setMonthlyAmount(monthlySheet, expensesSheet, payload.month, Number(payload.amount)));
     }
     
@@ -110,10 +156,12 @@ function doPost(e) {
     return createJsonResponse({ success: false, error: 'Unknown action: ' + action });
   } catch (err) {
     return createJsonResponse({ success: false, error: err.toString() });
+  } finally {
+    lock.releaseLock();
   }
 }
 
-// 1. GET_MONTHLY_DATA
+// 1. GET_MONTHLY_DATA - Fetch monthly budgets and expenses with single source of truth
 function getMonthlyData(monthlySheet, expensesSheet, targetMonth) {
   const monthlyRows = monthlySheet.getDataRange().getValues();
   const monthlyBudgets = {};
@@ -139,9 +187,20 @@ function getMonthlyData(monthlySheet, expensesSheet, targetMonth) {
     const description = String(row[4] || '');
     const date = String(row[5] || '');
     const created_at = String(row[6] || '');
+    const created_by = String(row[7] || '');
     
     if (id) {
-      const exp = { id, month, amount, type: 'expense', category, description, date, created_at };
+      const exp = {
+        id: id,
+        month: month,
+        amount: amount,
+        type: 'expense',
+        category: category,
+        description: description,
+        date: date,
+        created_at: created_at,
+        created_by: created_by
+      };
       if (!targetMonth || month === targetMonth) {
         expenses.push(exp);
       }
@@ -171,7 +230,39 @@ function getMonthlyData(monthlySheet, expensesSheet, targetMonth) {
   };
 }
 
-// 2. SET_MONTHLY_AMOUNT / START_MONTH
+// 2. START_MONTH - If month already exists with an amount, returns existing without duplicate/overwrite
+function startMonth(monthlySheet, expensesSheet, month, amount) {
+  if (!month || amount <= 0) {
+    return { success: false, error: 'Invalid month or amount' };
+  }
+  
+  const monthlyRows = monthlySheet.getDataRange().getValues();
+  let foundRowIndex = -1;
+  let existingAmount = 0;
+  
+  for (let i = 1; i < monthlyRows.length; i++) {
+    if (String(monthlyRows[i][0] || '').trim() === month) {
+      foundRowIndex = i + 1;
+      existingAmount = Number(monthlyRows[i][1]) || 0;
+      break;
+    }
+  }
+  
+  const now = new Date().toISOString();
+  if (foundRowIndex > 0) {
+    if (existingAmount > 0) {
+      return getMonthlyData(monthlySheet, expensesSheet, month);
+    }
+    monthlySheet.getRange(foundRowIndex, 2).setValue(amount);
+    monthlySheet.getRange(foundRowIndex, 3).setValue(now);
+  } else {
+    monthlySheet.appendRow([month, amount, now]);
+  }
+  
+  return getMonthlyData(monthlySheet, expensesSheet, month);
+}
+
+// 3. SET_MONTHLY_AMOUNT - Explicitly updates the monthly total for a month
 function setMonthlyAmount(monthlySheet, expensesSheet, month, amount) {
   if (!month || amount <= 0) {
     return { success: false, error: 'Invalid month or amount' };
@@ -182,7 +273,7 @@ function setMonthlyAmount(monthlySheet, expensesSheet, month, amount) {
   
   for (let i = 1; i < monthlyRows.length; i++) {
     if (String(monthlyRows[i][0] || '').trim() === month) {
-      foundRowIndex = i + 1; // 1-based index in Sheet
+      foundRowIndex = i + 1;
       break;
     }
   }
@@ -198,7 +289,7 @@ function setMonthlyAmount(monthlySheet, expensesSheet, month, amount) {
   return getMonthlyData(monthlySheet, expensesSheet, month);
 }
 
-// 3. ADD_MONEY (Cumulative Addition: New Total = Current Total + Added Amount)
+// 4. ADD_MONEY (Cumulative Addition: New Total = Current Shared Total + Added Amount)
 function addMoney(monthlySheet, expensesSheet, month, additionalAmount) {
   const addVal = Math.round(Number(additionalAmount));
   if (!month || addVal <= 0) {
@@ -230,7 +321,7 @@ function addMoney(monthlySheet, expensesSheet, month, additionalAmount) {
   return getMonthlyData(monthlySheet, expensesSheet, month);
 }
 
-// 4. ADD_EXPENSE (with concurrency & overspending validation)
+// 5. ADD_EXPENSE (with concurrency, balance verification, and created_by tracking)
 function addExpense(monthlySheet, expensesSheet, payload) {
   const month = payload.month;
   const amount = Math.round(Number(payload.amount));
@@ -238,12 +329,12 @@ function addExpense(monthlySheet, expensesSheet, payload) {
   const description = payload.description || category;
   const date = payload.date || new Date().toISOString().split('T')[0];
   const now = new Date().toISOString();
+  const created_by = payload.created_by || payload.username || 'Shani';
   
   if (!month || amount <= 0) {
     return { success: false, error: 'Please enter a valid expense amount greater than 0' };
   }
   
-  // Concurrency Check: Fetch latest balance directly from Google Sheets
   const currentData = getMonthlyData(monthlySheet, expensesSheet, month);
   const monthlyAmount = currentData.monthly_amount || 0;
   const currentTotalSpent = currentData.totalSpent || 0;
@@ -260,12 +351,12 @@ function addExpense(monthlySheet, expensesSheet, payload) {
   }
   
   const id = payload.id || ('exp_' + new Date().getTime() + '_' + Math.random().toString(36).substr(2, 6));
-  expensesSheet.appendRow([id, month, amount, category, description, date, now]);
+  expensesSheet.appendRow([id, month, amount, category, description, date, now, created_by]);
   
   return getMonthlyData(monthlySheet, expensesSheet, month);
 }
 
-// 5. UPDATE_EXPENSE
+// 6. UPDATE_EXPENSE
 function updateExpense(monthlySheet, expensesSheet, payload) {
   const id = String(payload.id);
   const newAmount = Math.round(Number(payload.amount));
@@ -273,6 +364,7 @@ function updateExpense(monthlySheet, expensesSheet, payload) {
   const description = payload.description;
   const date = payload.date;
   const month = payload.month;
+  const created_by = payload.created_by || payload.username;
   
   if (!id || newAmount <= 0) {
     return { success: false, error: 'Invalid expense ID or amount' };
@@ -296,7 +388,6 @@ function updateExpense(monthlySheet, expensesSheet, payload) {
     return { success: false, error: 'Expense not found' };
   }
   
-  // Overspending validation
   const currentData = getMonthlyData(monthlySheet, expensesSheet, expMonth);
   const availableBudget = currentData.remainingMoney + oldAmount;
   
@@ -310,12 +401,13 @@ function updateExpense(monthlySheet, expensesSheet, payload) {
   if (category) expensesSheet.getRange(foundRowIndex, 4).setValue(category);
   if (description) expensesSheet.getRange(foundRowIndex, 5).setValue(description);
   if (date) expensesSheet.getRange(foundRowIndex, 6).setValue(date);
+  if (created_by) expensesSheet.getRange(foundRowIndex, 8).setValue(created_by);
   expensesSheet.getRange(foundRowIndex, 3).setValue(newAmount);
   
   return getMonthlyData(monthlySheet, expensesSheet, expMonth);
 }
 
-// 6. DELETE_EXPENSE
+// 7. DELETE_EXPENSE
 function deleteExpense(expensesSheet, id) {
   if (!id) return { success: false, error: 'Expense ID required' };
   
@@ -329,7 +421,7 @@ function deleteExpense(expensesSheet, id) {
   return { success: false, error: 'Expense not found' };
 }
 
-// 7. GET_SUMMARY
+// 8. GET_SUMMARY
 function getSummary(monthlySheet, expensesSheet, targetMonth) {
   const data = getMonthlyData(monthlySheet, expensesSheet, targetMonth);
   const categoryMap = {};

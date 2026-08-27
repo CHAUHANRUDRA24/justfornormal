@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
-import { Calendar, ChevronDown, RotateCcw, AlertTriangle, RefreshCw, FileSpreadsheet, LogOut } from 'lucide-react';
+import { Calendar, ChevronDown, RotateCcw, AlertTriangle, RefreshCw, FileSpreadsheet, LogOut, User } from 'lucide-react';
 import { formatMonthLabel } from '../utils/format';
 import { SyncStatus } from '../hooks/useExpenseTracker';
+import { UserProfile } from '../types';
 
 interface HeaderProps {
   selectedMonth: string;
@@ -10,6 +11,7 @@ interface HeaderProps {
   onResetMonth: () => void;
   hasData: boolean;
   syncStatus?: SyncStatus;
+  currentUser?: UserProfile | null;
   onRefresh?: () => void;
   onOpenSettings?: () => void;
   onLogout?: () => void;
@@ -22,11 +24,18 @@ export const Header: React.FC<HeaderProps> = ({
   onResetMonth,
   hasData,
   syncStatus = 'synced',
+  currentUser,
   onRefresh,
   onOpenSettings,
   onLogout,
 }) => {
   const [showConfirm, setShowConfirm] = useState(false);
+
+  const userBadgeLabel = currentUser
+    ? currentUser.role === 'dad'
+      ? '🧔 Dad'
+      : '🧑 Rudra'
+    : '👤 User';
 
   return (
     <>
@@ -51,8 +60,19 @@ export const Header: React.FC<HeaderProps> = ({
           </div>
         </div>
 
-        {/* Right action tools: Sync, Sheets Config, Reset Month, Logout */}
+        {/* Right action tools: Current User Pill, Sync, Sheets Config, Reset Month, Logout */}
         <div className="flex items-center gap-1.5">
+          {/* Current User Badge */}
+          {currentUser && (
+            <div
+              id="current-user-badge"
+              title={`Logged in as ${currentUser.name || currentUser.username}`}
+              className="flex items-center gap-1 bg-white border border-slate-200/80 px-2.5 py-1.5 rounded-xl shadow-2xs text-xs font-bold text-slate-700"
+            >
+              <span>{userBadgeLabel}</span>
+            </div>
+          )}
+
           {/* Manual Refresh / Sync Status */}
           {onRefresh && (
             <button
@@ -98,7 +118,7 @@ export const Header: React.FC<HeaderProps> = ({
               id="logout-btn"
               type="button"
               onClick={onLogout}
-              title="Log out from family account"
+              title="Log out"
               className="p-2 text-slate-400 hover:text-slate-700 bg-white hover:bg-slate-50 border border-slate-200/80 rounded-xl transition-all cursor-pointer shadow-2xs"
             >
               <LogOut className="w-3.5 h-3.5" />

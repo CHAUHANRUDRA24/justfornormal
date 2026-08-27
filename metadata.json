@@ -1,0 +1,6 @@
+{
+  "name": "Expense Tracker",
+  "description": "A shared family mobile-first expense tracker powered by Google Sheets and Google Apps Script for real-time multi-device synchronization.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

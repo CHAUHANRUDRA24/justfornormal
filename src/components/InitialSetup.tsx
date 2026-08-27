@@ -1,14 +1,19 @@
 import React, { useState } from 'react';
-import { ArrowRight, Wallet, Loader2 } from 'lucide-react';
+import { ArrowRight, Wallet, Loader2, LogOut, User } from 'lucide-react';
 import { formatMonthLabel } from '../utils/format';
+import { UserProfile } from '../types';
 
 interface InitialSetupProps {
   monthKey: string;
+  currentUser?: UserProfile | null;
+  onLogout?: () => void;
   onSetInitial: (amount: number, note?: string) => { success: boolean; error?: string } | Promise<{ success: boolean; error?: string }>;
 }
 
 export const InitialSetup: React.FC<InitialSetupProps> = ({
   monthKey,
+  currentUser,
+  onLogout,
   onSetInitial,
 }) => {
   const [amountStr, setAmountStr] = useState<string>('');
@@ -35,8 +40,33 @@ export const InitialSetup: React.FC<InitialSetupProps> = ({
     }
   };
 
+  const userBadgeLabel = currentUser
+    ? currentUser.role === 'dad'
+      ? '🧔 Dad (Shani)'
+      : '🧑 Me (Rudra)'
+    : '👤 User';
+
   return (
     <div id="initial-setup-screen" className="min-h-screen bg-slate-100/80 flex flex-col justify-center items-center px-4 py-8">
+      {/* Top Bar for User & Logout */}
+      <div className="w-full max-w-md flex items-center justify-between mb-3 px-2">
+        <div className="flex items-center gap-1.5 bg-white border border-slate-200/80 px-3 py-1.5 rounded-xl shadow-2xs text-xs font-bold text-slate-700">
+          <User className="w-3.5 h-3.5 text-slate-400" />
+          <span>Logged in as: <strong>{userBadgeLabel}</strong></span>
+        </div>
+        {onLogout && (
+          <button
+            type="button"
+            id="initial-setup-logout-btn"
+            onClick={onLogout}
+            className="flex items-center gap-1 text-xs font-bold text-rose-600 hover:text-rose-700 bg-white border border-rose-100 px-3 py-1.5 rounded-xl shadow-2xs cursor-pointer hover:bg-rose-50 transition-all"
+          >
+            <LogOut className="w-3 h-3" />
+            <span>Switch User</span>
+          </button>
+        )}
+      </div>
+
       <div className="w-full max-w-md bg-white rounded-3xl p-6 sm:p-8 shadow-sm border border-slate-200/80">
         {/* Header Icon */}
         <div className="flex flex-col items-center text-center mb-6">

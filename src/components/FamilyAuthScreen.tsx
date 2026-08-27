@@ -9,6 +9,7 @@ interface FamilyAuthScreenProps {
   isConfigured: boolean;
 }
 
+// ONLY the two main authorized accounts
 const VALID_ACCOUNTS: Record<string, { username: string; name: string; role: 'dad' | 'me'; pass: string }> = {
   shani: { username: 'Shani', name: 'Shani (Dad)', role: 'dad', pass: 'Shani@13' },
   dad: { username: 'Shani', name: 'Shani (Dad)', role: 'dad', pass: 'Shani@13' },
@@ -21,8 +22,8 @@ export const FamilyAuthScreen: React.FC<FamilyAuthScreenProps> = ({
   onOpenSettings,
   isConfigured,
 }) => {
-  const [selectedUser, setSelectedUser] = useState<'Shani' | 'Rudra'>('Shani');
-  const [username, setUsername] = useState('Shani');
+  const [selectedUser, setSelectedUser] = useState<'Shani' | 'Rudra' | null>(null);
+  const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -200,7 +201,13 @@ export const FamilyAuthScreen: React.FC<FamilyAuthScreenProps> = ({
             disabled={isSubmitting}
             className="w-full py-4 px-6 bg-rose-600 hover:bg-rose-700 active:scale-[0.99] disabled:bg-slate-300 text-white font-bold text-base rounded-2xl shadow-sm hover:shadow transition-all flex items-center justify-center gap-2 cursor-pointer mt-2"
           >
-            <span>{isSubmitting ? 'Verifying...' : `Log In as ${selectedUser === 'Shani' ? 'Dad (Shani)' : 'Me (Rudra)'}`}</span>
+            <span>
+              {isSubmitting
+                ? 'Verifying...'
+                : selectedUser
+                ? `Log In as ${selectedUser === 'Shani' ? 'Dad (Shani)' : 'Me (Rudra)'}`
+                : 'Log In'}
+            </span>
             <ArrowRight className="w-5 h-5" />
           </button>
         </form>

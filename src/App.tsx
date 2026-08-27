@@ -19,9 +19,11 @@ const USER_KEY = 'family_expense_user';
 function getStoredUser(): UserProfile | null {
   try {
     const raw = localStorage.getItem(USER_KEY);
-    if (raw) return JSON.parse(raw);
-    if (localStorage.getItem(AUTH_KEY) === 'true') {
-      return { username: 'Shani', name: 'Shani (Dad)', role: 'dad' };
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed && (parsed.username === 'Shani' || parsed.username === 'Rudra')) {
+        return parsed;
+      }
     }
   } catch (e) {
     console.error('Failed to parse stored user:', e);
@@ -114,6 +116,8 @@ export default function App() {
       <>
         <InitialSetup
           monthKey={selectedMonth}
+          currentUser={currentUser}
+          onLogout={handleLogout}
           onSetInitial={(amt, note) => {
             return startMonth(amt, note);
           }}

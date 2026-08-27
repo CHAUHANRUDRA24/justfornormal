@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { X, Check, Copy, ExternalLink, FileSpreadsheet, CheckCircle2 } from 'lucide-react';
-import { getAppsScriptUrl, saveAppsScriptUrl } from '../services/googleSheetsService';
+import { X, Check, Copy, ExternalLink, FileSpreadsheet, CheckCircle2, Send, Loader2, AlertCircle, Sparkles, RefreshCw } from 'lucide-react';
+import { getAppsScriptUrl, saveAppsScriptUrl, generateSyncShareUrl, googleSheetsService } from '../services/googleSheetsService';
 
 interface GoogleSheetsConfigModalProps {
   isOpen: boolean;
@@ -457,7 +457,10 @@ export const GoogleSheetsConfigModal: React.FC<GoogleSheetsConfigModalProps> = (
 }) => {
   const [url, setUrl] = useState(getAppsScriptUrl());
   const [copied, setCopied] = useState(false);
+  const [linkCopied, setLinkCopied] = useState(false);
   const [activeTab, setActiveTab] = useState<'url' | 'script'>('url');
+  const [testStatus, setTestStatus] = useState<'idle' | 'testing' | 'success' | 'error'>('idle');
+  const [testMessage, setTestMessage] = useState<string>('');
 
   if (!isOpen) return null;
 
@@ -466,6 +469,30 @@ export const GoogleSheetsConfigModal: React.FC<GoogleSheetsConfigModalProps> = (
     saveAppsScriptUrl(url.trim());
     onSaved();
     onClose();
+  };
+
+  const handleTestConnection = async () => {
+    if (!url.trim()) {
+      setTestStatus('error');
+      setTestMessage('Please enter a valid Google Apps Script Web App URL first.');
+      return;
+    }
+    setTestStatus('testing');
+    setTestMessage('');
+    try {
+      saveAppsScriptUrl(url.trim());
+      const res = await googleSheetsService.getMonthlyData('');
+      if (res && res.success) {
+        setTestStatus('success');
+        setTestMessage('Connected successfully! Both devices will sync in real time.');
+      } else {
+        setTestStatus('error');
+        setTestMessage(res?.error || 'Connection failed. Please verify the Web App deployment.');
+      }
+    } catch (e: any) {
+      setTestStatus('error');
+      setTestMessage(e.message || 'Unable to connect. Check if Web App is deployed with access: Anyone.');
+    }
   };
 
   const handleCopyCode = async () => {
@@ -478,6 +505,27 @@ export const GoogleSheetsConfigModal: React.FC<GoogleSheetsConfigModalProps> = (
     }
   };
 
+  const syncShareUrl = generateSyncShareUrl();
+
+  const handleCopyShareLink = async () => {
+    if (!syncShareUrl) return;
+    try {
+      await navigator.clipboard.writeText(syncShareUrl);
+      setLinkCopied(true);
+      setTimeout(() => setLinkCopied(false), 2500);
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleWhatsAppShare = () => {
+    if (!syncShareUrl) return;
+    const msg = encodeURIComponent(
+      `Open this link on your phone to connect to our shared Family Expense Tracker:\n\n${syncShareUrl}`
+    );
+    window.open(`https://api.whatsapp.com/send?text=${msg}`, '_blank');
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/50 backdrop-blur-xs transition-opacity animate-in fade-in duration-200">
       <div className="fixed inset-0" onClick={onClose} />
@@ -488,13 +536,13 @@ export const GoogleSheetsConfigModal: React.FC<GoogleSheetsConfigModalProps> = (
       >
         {/* Header */}
         <div className="flex items-center justify-between px-6 pt-5 pb-4 border-b border-slate-100">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center border border-emerald-100">
-              <FileSpreadsheet className="w-4 h-4" />
+          <div className="flex items-center gap-2.5">
+            <div className="w-9 h-9 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center border border-emerald-100 shadow-2xs">
+              <FileSpreadsheet className="w-5 h-5" />
             </div>
             <div>
-              <h2 className="text-base font-bold text-slate-900">Google Sheets Sync</h2>
-              <p className="text-xs text-slate-500">Shared Backend for both phones</p>
+              <h2 className="text-base font-bold text-slate-900">Multi-Device Synchronization</h2>
+              <p className="text-xs text-slate-500">Shared Backend for Father & Rudra</p>
             </div>
           </div>
           <button
@@ -517,7 +565,7 @@ export const GoogleSheetsConfigModal: React.FC<GoogleSheetsConfigModalProps> = (
                 : 'border-transparent text-slate-500 hover:text-slate-700'
             }`}
           >
-            Connect Web App URL
+            Connect & Share
           </button>
           <button
             type="button"
@@ -535,51 +583,115 @@ export const GoogleSheetsConfigModal: React.FC<GoogleSheetsConfigModalProps> = (
         {/* Content */}
         <div className="p-6 overflow-y-auto space-y-4">
           {activeTab === 'url' ? (
-            <form onSubmit={handleSave} className="space-y-4">
-              <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5">
-                  Google Apps Script Web App URL
-                </label>
-                <input
-                  type="url"
-                  placeholder="https://script.google.com/macros/s/.../exec"
-                  value={url}
-                  onChange={(e) => setUrl(e.target.value)}
-                  className="w-full px-3.5 py-3 text-xs font-mono bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:border-emerald-500 focus:outline-none transition-all text-slate-900"
-                />
-                <p className="text-[11px] text-slate-500 mt-1.5">
-                  Can also be configured via <code className="bg-slate-100 px-1 py-0.5 rounded font-mono">VITE_APPS_SCRIPT_URL</code> in environment variables.
-                </p>
-              </div>
+            <div className="space-y-4">
+              {/* 1-Click Share Sync Link to Second Phone */}
+              {url.trim().startsWith('https://script.google.com/macros/s/') && (
+                <div className="p-4 bg-emerald-50/80 border border-emerald-200/80 rounded-2xl space-y-2.5">
+                  <div className="flex items-center gap-1.5 text-emerald-950 font-bold text-xs">
+                    <Sparkles className="w-4 h-4 text-emerald-600 shrink-0" />
+                    <span>Instant Link for 2nd Phone (Dad / Rudra)</span>
+                  </div>
+                  <p className="text-[11px] text-emerald-900/80 leading-relaxed">
+                    Open this link on the other phone to connect to the exact same Google Sheet. Both phones will always stay synchronized with identical numbers.
+                  </p>
+                  <div className="grid grid-cols-2 gap-2 pt-1">
+                    <button
+                      type="button"
+                      onClick={handleCopyShareLink}
+                      className="py-2.5 px-3 bg-white hover:bg-emerald-50 text-emerald-900 border border-emerald-300 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all shadow-2xs cursor-pointer"
+                    >
+                      {linkCopied ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+                      <span>{linkCopied ? 'Copied!' : 'Copy Link'}</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleWhatsAppShare}
+                      className="py-2.5 px-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all shadow-2xs cursor-pointer"
+                    >
+                      <Send className="w-3.5 h-3.5" />
+                      <span>WhatsApp</span>
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              <form onSubmit={handleSave} className="space-y-3.5">
+                <div>
+                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5">
+                    Google Apps Script Web App URL
+                  </label>
+                  <input
+                    type="url"
+                    placeholder="https://script.google.com/macros/s/.../exec"
+                    value={url}
+                    onChange={(e) => {
+                      setUrl(e.target.value);
+                      setTestStatus('idle');
+                    }}
+                    className="w-full px-3.5 py-3 text-xs font-mono bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:border-emerald-500 focus:outline-none transition-all text-slate-900"
+                  />
+                  <p className="text-[11px] text-slate-500 mt-1.5">
+                    Or set <code className="bg-slate-100 px-1 py-0.5 rounded font-mono">VITE_APPS_SCRIPT_URL</code> in environment variables.
+                  </p>
+                </div>
+
+                {/* Test Connection feedback */}
+                {testStatus === 'success' && (
+                  <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center gap-2 text-xs font-semibold text-emerald-800">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                    <span>{testMessage}</span>
+                  </div>
+                )}
+                {testStatus === 'error' && (
+                  <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl flex items-center gap-2 text-xs font-semibold text-rose-800">
+                    <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                    <span>{testMessage}</span>
+                  </div>
+                )}
+
+                {/* Action Buttons: Test Connection & Save */}
+                <div className="grid grid-cols-2 gap-2 pt-1">
+                  <button
+                    type="button"
+                    onClick={handleTestConnection}
+                    disabled={testStatus === 'testing' || !url.trim()}
+                    className="py-3 px-3 bg-slate-100 hover:bg-slate-200 disabled:opacity-50 text-slate-700 font-bold text-xs rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                  >
+                    {testStatus === 'testing' ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    ) : (
+                      <RefreshCw className="w-3.5 h-3.5" />
+                    )}
+                    <span>{testStatus === 'testing' ? 'Testing...' : 'Test Connection'}</span>
+                  </button>
+                  <button
+                    type="submit"
+                    className="py-3 px-4 bg-emerald-600 hover:bg-emerald-700 active:scale-[0.99] text-white font-bold text-xs rounded-xl shadow-xs hover:shadow transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                  >
+                    <Check className="w-3.5 h-3.5" />
+                    <span>Save & Sync</span>
+                  </button>
+                </div>
+              </form>
 
               {/* Quick Setup Checklist */}
-              <div className="p-3.5 bg-emerald-50/60 border border-emerald-100 rounded-2xl space-y-2 text-xs text-slate-700">
-                <p className="font-bold text-emerald-900 flex items-center gap-1.5">
+              <div className="p-3.5 bg-slate-50 border border-slate-200/80 rounded-2xl space-y-2 text-xs text-slate-700">
+                <p className="font-bold text-slate-900 flex items-center gap-1.5">
                   <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                  Quick 4-step setup:
+                  How to setup shared Google Sheet (4 steps):
                 </p>
                 <ol className="list-decimal list-inside space-y-1 text-[11px] text-slate-600 leading-relaxed pl-1">
-                  <li>Open <a href="https://sheets.new" target="_blank" rel="noreferrer" className="text-emerald-700 underline font-semibold inline-flex items-center gap-0.5">Google Sheets <ExternalLink className="w-2.5 h-2.5" /></a></li>
-                  <li>Go to <strong>Extensions &gt; Apps Script</strong></li>
-                  <li>Paste the code from the <strong>View Apps Script Code</strong> tab</li>
-                  <li>Click <strong>Deploy &gt; New deployment &gt; Web app</strong> (set <em>Execute as: Me</em>, <em>Who has access: Anyone</em>) and paste the URL here.</li>
+                  <li>Create a new spreadsheet at <a href="https://sheets.new" target="_blank" rel="noreferrer" className="text-emerald-700 underline font-semibold inline-flex items-center gap-0.5">sheets.new <ExternalLink className="w-2.5 h-2.5" /></a></li>
+                  <li>Click <strong>Extensions &gt; Apps Script</strong></li>
+                  <li>Copy code from <strong>View Apps Script Code</strong> tab and paste into <code className="font-mono">Code.gs</code></li>
+                  <li>Click <strong>Deploy &gt; New deployment &gt; Web app</strong> (Set <em>Execute as: Me</em>, <em>Who has access: Anyone</em>) and paste URL here.</li>
                 </ol>
               </div>
-
-              <div className="pt-2">
-                <button
-                  type="submit"
-                  className="w-full py-3.5 px-6 bg-emerald-600 hover:bg-emerald-700 active:scale-[0.99] text-white font-bold text-sm rounded-2xl shadow-sm hover:shadow transition-all flex items-center justify-center gap-2 cursor-pointer"
-                >
-                  <Check className="w-4 h-4" />
-                  <span>Save Connection</span>
-                </button>
-              </div>
-            </form>
+            </div>
           ) : (
             <div className="space-y-3">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-slate-700">Code.gs (Apps Script)</span>
+                <span className="text-xs font-bold text-slate-700">Code.gs (Apps Script Backend)</span>
                 <button
                   type="button"
                   onClick={handleCopyCode}

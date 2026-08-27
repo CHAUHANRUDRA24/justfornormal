@@ -37,6 +37,8 @@ export const Header: React.FC<HeaderProps> = ({
       : '🧑 Rudra'
     : '👤 User';
 
+  const isFather = currentUser?.role === 'dad' || currentUser?.username?.toLowerCase() === 'shani';
+
   return (
     <>
       <header className="w-full max-w-md mx-auto pt-4 pb-2 px-3 sm:px-4 flex items-center justify-between gap-2">
@@ -99,13 +101,13 @@ export const Header: React.FC<HeaderProps> = ({
             </button>
           )}
 
-          {/* Reset Current Month */}
-          {hasData && (
+          {/* Reset Current Month (Father Only) */}
+          {hasData && isFather && (
             <button
               id="reset-data-btn"
               type="button"
               onClick={() => setShowConfirm(true)}
-              title="Reset current month"
+              title="Reset current month (Dad only)"
               className="p-2 text-slate-400 hover:text-rose-600 bg-white hover:bg-slate-50 border border-slate-200/80 rounded-xl transition-all cursor-pointer shadow-2xs"
             >
               <RotateCcw className="w-3.5 h-3.5" />

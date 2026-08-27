@@ -118,7 +118,11 @@ export default function App() {
           monthKey={selectedMonth}
           currentUser={currentUser}
           onLogout={handleLogout}
+          onRefresh={() => refreshData(true)}
           onSetInitial={(amt, note) => {
+            if (currentUser?.role !== 'dad') {
+              return { success: false, error: 'Only Father (Shani) can start or add the monthly budget.' };
+            }
             return startMonth(amt, note);
           }}
         />
@@ -130,6 +134,8 @@ export default function App() {
       </>
     );
   }
+
+  const isFather = currentUser?.role === 'dad' || currentUser?.username?.toLowerCase() === 'shani';
 
   return (
     <div className="min-h-screen bg-slate-100/80 text-slate-900 flex flex-col items-center pb-12">
@@ -155,8 +161,13 @@ export default function App() {
           remainingMoney={remainingMoney}
           monthlyAmount={monthlyAmount}
           totalSpent={totalSpent}
+          currentUser={currentUser}
           onOpenAddExpense={() => setIsAddExpenseOpen(true)}
-          onOpenAddMoney={() => setIsAddMoneyOpen(true)}
+          onOpenAddMoney={() => {
+            if (isFather) {
+              setIsAddMoneyOpen(true);
+            }
+          }}
         />
 
         {/* 2. Recent Spending (Expense cards with edit & delete) */}

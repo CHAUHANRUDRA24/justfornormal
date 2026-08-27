@@ -2,7 +2,29 @@ import { Expense } from '../types';
 
 const STORAGE_URL_KEY = 'family_expense_apps_script_url';
 
+// Auto-check URL query param (e.g. ?sync_url=... or ?sheet_url=...) to auto-configure on second device
+function extractAndSaveUrlFromParams(): string {
+  if (typeof window === 'undefined') return '';
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const syncParam = params.get('sync_url') || params.get('sheet_url') || params.get('script_url');
+    if (syncParam && syncParam.startsWith('https://script.google.com/macros/s/')) {
+      localStorage.setItem(STORAGE_URL_KEY, syncParam.trim());
+      // Clean query parameter from URL bar without reload
+      const cleanUrl = window.location.protocol + '//' + window.location.host + window.location.pathname;
+      window.history.replaceState({ path: cleanUrl }, '', cleanUrl);
+      return syncParam.trim();
+    }
+  } catch (e) {
+    console.error('Error parsing sync param:', e);
+  }
+  return '';
+}
+
 export function getAppsScriptUrl(): string {
+  const paramUrl = extractAndSaveUrlFromParams();
+  if (paramUrl) return paramUrl;
+
   const envUrl = (import.meta as any).env?.VITE_APPS_SCRIPT_URL || '';
   const storedUrl = typeof window !== 'undefined' ? localStorage.getItem(STORAGE_URL_KEY) || '' : '';
   return (storedUrl || envUrl).trim();
@@ -12,6 +34,13 @@ export function saveAppsScriptUrl(url: string): void {
   if (typeof window !== 'undefined') {
     localStorage.setItem(STORAGE_URL_KEY, url.trim());
   }
+}
+
+export function generateSyncShareUrl(): string {
+  const currentUrl = getAppsScriptUrl();
+  if (!currentUrl || typeof window === 'undefined') return '';
+  const base = window.location.origin + window.location.pathname;
+  return `${base}?sync_url=${encodeURIComponent(currentUrl)}`;
 }
 
 export function isGoogleSheetsConfigured(): boolean {

@@ -1,12 +1,14 @@
 import React from 'react';
-import { Plus, Minus, AlertCircle, PlusCircle } from 'lucide-react';
+import { Minus, AlertCircle, PlusCircle } from 'lucide-react';
 import { formatINR, formatMonthLabel } from '../utils/format';
+import { UserProfile } from '../types';
 
 interface MainBalanceCardProps {
   monthKey: string;
   remainingMoney: number;
   monthlyAmount: number;
   totalSpent: number;
+  currentUser?: UserProfile | null;
   onOpenAddExpense: () => void;
   onOpenAddMoney: () => void;
 }
@@ -16,11 +18,13 @@ export const MainBalanceCard: React.FC<MainBalanceCardProps> = ({
   remainingMoney,
   monthlyAmount,
   totalSpent,
+  currentUser,
   onOpenAddExpense,
   onOpenAddMoney,
 }) => {
   const isZero = remainingMoney === 0;
   const monthTitle = formatMonthLabel(monthKey);
+  const isFather = currentUser?.role === 'dad' || currentUser?.username?.toLowerCase() === 'shani';
 
   return (
     <div id="main-balance-card" className="w-full bg-white rounded-3xl p-6 sm:p-7 shadow-sm border border-slate-200/80 mb-4">
@@ -75,25 +79,29 @@ export const MainBalanceCard: React.FC<MainBalanceCardProps> = ({
         </div>
       </div>
 
-      {/* Dual Action Buttons: + Add Money and - Add Expense */}
-      <div className="grid grid-cols-2 gap-3 mt-4">
-        {/* + Add Money Button */}
-        <button
-          id="open-add-money-btn"
-          type="button"
-          onClick={onOpenAddMoney}
-          className="py-3.5 px-4 bg-emerald-600 hover:bg-emerald-700 active:scale-[0.99] text-white font-bold text-sm sm:text-base rounded-2xl shadow-xs hover:shadow transition-all flex items-center justify-center gap-2 cursor-pointer"
-        >
-          <PlusCircle className="w-4 h-4 sm:w-5 sm:h-5 stroke-[2.5]" />
-          <span>+ Add Money</span>
-        </button>
+      {/* Action Buttons: If Father, show + Add Money and - Add Expense; If Rudra, show - Add Expense */}
+      <div className={`mt-4 ${isFather ? 'grid grid-cols-2 gap-3' : 'flex flex-col gap-2'}`}>
+        {/* + Add Money Button (Father Only) */}
+        {isFather && (
+          <button
+            id="open-add-money-btn"
+            type="button"
+            onClick={onOpenAddMoney}
+            className="py-3.5 px-4 bg-emerald-600 hover:bg-emerald-700 active:scale-[0.99] text-white font-bold text-sm sm:text-base rounded-2xl shadow-xs hover:shadow transition-all flex items-center justify-center gap-2 cursor-pointer"
+          >
+            <PlusCircle className="w-4 h-4 sm:w-5 sm:h-5 stroke-[2.5]" />
+            <span>+ Add Money</span>
+          </button>
+        )}
 
         {/* - Add Expense Button */}
         <button
           id="add-expense-btn"
           type="button"
           onClick={onOpenAddExpense}
-          className="py-3.5 px-4 bg-rose-600 hover:bg-rose-700 active:scale-[0.99] text-white font-bold text-sm sm:text-base rounded-2xl shadow-xs hover:shadow transition-all flex items-center justify-center gap-2 cursor-pointer"
+          className={`py-3.5 px-4 bg-rose-600 hover:bg-rose-700 active:scale-[0.99] text-white font-bold text-sm sm:text-base rounded-2xl shadow-xs hover:shadow transition-all flex items-center justify-center gap-2 cursor-pointer ${
+            !isFather ? 'w-full py-4 text-base' : ''
+          }`}
         >
           <Minus className="w-4 h-4 sm:w-5 sm:h-5 stroke-[2.5]" />
           <span>− Add Expense</span>

@@ -45,11 +45,27 @@ function saveCachedData(data: CachedData) {
 
 export type SyncStatus = 'synced' | 'syncing' | 'offline' | 'error';
 
+// BroadcastChannel for instant local cross-tab sync
+const SYNC_CHANNEL_NAME = 'family_expense_sync_channel';
+
+function notifyOtherTabs() {
+  if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
+    try {
+      const channel = new BroadcastChannel(SYNC_CHANNEL_NAME);
+      channel.postMessage({ type: 'DATA_CHANGED', timestamp: Date.now() });
+      channel.close();
+    } catch (e) {
+      console.warn('BroadcastChannel error:', e);
+    }
+  }
+}
+
 export function useExpenseTracker(currentUser?: UserProfile | null) {
   const [data, setData] = useState<CachedData>(loadCachedData);
   const [selectedMonth, setSelectedMonth] = useState<string>(getCurrentMonthKey());
   const [syncStatus, setSyncStatus] = useState<SyncStatus>('synced');
   const [isInitialLoading, setIsInitialLoading] = useState<boolean>(() => isGoogleSheetsConfigured());
+  const [lastSyncedAt, setLastSyncedAt] = useState<Date | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isConfigured, setIsConfigured] = useState<boolean>(isGoogleSheetsConfigured());
   const isFetchingRef = useRef(false);
@@ -96,6 +112,7 @@ export function useExpenseTracker(currentUser?: UserProfile | null) {
             expenses: Array.isArray(res.expenses) ? res.expenses : prev.expenses,
           };
         });
+        setLastSyncedAt(new Date());
         setSyncStatus('synced');
         setError(null);
       } else {
@@ -116,29 +133,50 @@ export function useExpenseTracker(currentUser?: UserProfile | null) {
     refreshData(true);
   }, [refreshData]);
 
-  // 2. Refresh on window focus and document visibility change (when switching between apps or returning to tab)
+  // 2. Refresh on window focus, document visibility, and online reconnect
   useEffect(() => {
     const handleFocusOrVisible = () => {
       if (document.visibilityState === 'visible') {
         refreshData(false);
       }
     };
+    const handleOnline = () => {
+      refreshData(true);
+    };
+
     window.addEventListener('focus', handleFocusOrVisible);
     document.addEventListener('visibilitychange', handleFocusOrVisible);
+    window.addEventListener('online', handleOnline);
+
     return () => {
       window.removeEventListener('focus', handleFocusOrVisible);
       document.removeEventListener('visibilitychange', handleFocusOrVisible);
+      window.removeEventListener('online', handleOnline);
     };
   }, [refreshData]);
 
-  // 3. Periodic background sync every 12 seconds
+  // 3. Fast multi-device periodic polling every 6 seconds when active
   useEffect(() => {
     const interval = setInterval(() => {
-      if (document.visibilityState === 'visible') {
+      if (document.visibilityState === 'visible' && !isFetchingRef.current) {
         refreshData(false);
       }
-    }, 12000);
+    }, 6000);
     return () => clearInterval(interval);
+  }, [refreshData]);
+
+  // 4. Cross-tab BroadcastChannel listener
+  useEffect(() => {
+    if (typeof window === 'undefined' || !('BroadcastChannel' in window)) return;
+    const channel = new BroadcastChannel(SYNC_CHANNEL_NAME);
+    channel.onmessage = (event) => {
+      if (event.data?.type === 'DATA_CHANGED') {
+        refreshData(false);
+      }
+    };
+    return () => {
+      channel.close();
+    };
   }, [refreshData]);
 
   // Monthly budget for selected month
@@ -227,6 +265,7 @@ export function useExpenseTracker(currentUser?: UserProfile | null) {
               expenses: res.expenses || prev.expenses,
             }));
             refreshData(false);
+            notifyOtherTabs();
           } else {
             setSyncStatus('error');
             if (res?.error) return { success: false, error: res.error };
@@ -235,6 +274,8 @@ export function useExpenseTracker(currentUser?: UserProfile | null) {
           setSyncStatus('error');
           console.error(err);
         }
+      } else {
+        notifyOtherTabs();
       }
 
       return { success: true };
@@ -280,6 +321,7 @@ export function useExpenseTracker(currentUser?: UserProfile | null) {
               }));
             }
             refreshData(false);
+            notifyOtherTabs();
           } else {
             setSyncStatus('error');
             if (res?.error) return { success: false, error: res.error };
@@ -288,6 +330,8 @@ export function useExpenseTracker(currentUser?: UserProfile | null) {
           setSyncStatus('error');
           console.error(err);
         }
+      } else {
+        notifyOtherTabs();
       }
 
       return { success: true };
@@ -346,6 +390,7 @@ export function useExpenseTracker(currentUser?: UserProfile | null) {
         ...prev,
         expenses: [newExpense, ...prev.expenses],
       }));
+      notifyOtherTabs();
 
       // Save to Google Sheets
       if (isGoogleSheetsConfigured()) {
@@ -364,12 +409,14 @@ export function useExpenseTracker(currentUser?: UserProfile | null) {
           if (res && res.success) {
             setSyncStatus('synced');
             refreshData(false);
+            notifyOtherTabs();
           } else if (res && !res.success) {
             // Revert optimistic update
             setData((prev) => ({
               ...prev,
               expenses: prev.expenses.filter((e) => e.id !== newExpense.id),
             }));
+            notifyOtherTabs();
             setSyncStatus('error');
             return {
               success: false,
@@ -433,6 +480,7 @@ export function useExpenseTracker(currentUser?: UserProfile | null) {
             : e
         ),
       }));
+      notifyOtherTabs();
 
       // Remote update
       if (isGoogleSheetsConfigured()) {
@@ -452,6 +500,7 @@ export function useExpenseTracker(currentUser?: UserProfile | null) {
           if (res && res.success) {
             setSyncStatus('synced');
             refreshData(false);
+            notifyOtherTabs();
           } else {
             setSyncStatus('error');
             if (res?.error) return { success: false, error: res.error };
@@ -478,6 +527,7 @@ export function useExpenseTracker(currentUser?: UserProfile | null) {
         ...prev,
         expenses: prev.expenses.filter((e) => e.id !== id),
       }));
+      notifyOtherTabs();
 
       // Remote delete
       if (isGoogleSheetsConfigured()) {
@@ -487,6 +537,7 @@ export function useExpenseTracker(currentUser?: UserProfile | null) {
           if (res && res.success) {
             setSyncStatus('synced');
             refreshData(false);
+            notifyOtherTabs();
           } else {
             setSyncStatus('error');
             if (res?.error) return { success: false, error: res.error };
@@ -512,11 +563,13 @@ export function useExpenseTracker(currentUser?: UserProfile | null) {
         expenses: prev.expenses.filter((e) => e.month !== selectedMonth),
       };
     });
+    notifyOtherTabs();
 
     if (isGoogleSheetsConfigured()) {
       try {
         await googleSheetsService.setMonthlyAmount(selectedMonth, 0);
         refreshData(false);
+        notifyOtherTabs();
       } catch (e) {
         console.error(e);
       }
@@ -537,6 +590,7 @@ export function useExpenseTracker(currentUser?: UserProfile | null) {
     expenses: currentExpenses,
     categorySummary,
     syncStatus,
+    lastSyncedAt,
     error,
     isConfigured,
     startMonth,

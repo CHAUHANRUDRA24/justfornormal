@@ -23,7 +23,7 @@ function getOrCreateSheets() {
   let monthlySheet = ss.getSheetByName(MONTHLY_SHEET_NAME);
   if (!monthlySheet) {
     monthlySheet = ss.insertSheet(MONTHLY_SHEET_NAME);
-    monthlySheet.appendRow(['month', 'monthly_amount', 'created_at']);
+    monthlySheet.appendRow(['month', 'total_available', 'updated_at']);
     monthlySheet.setFrozenRows(1);
   }
   
@@ -79,8 +79,12 @@ function doPost(e) {
     
     const action = payload.action || 'GET_MONTHLY_DATA';
     
-    if (action === 'SET_MONTHLY_AMOUNT') {
+    if (action === 'START_MONTH' || action === 'SET_MONTHLY_AMOUNT') {
       return createJsonResponse(setMonthlyAmount(monthlySheet, expensesSheet, payload.month, Number(payload.amount)));
+    }
+    
+    if (action === 'ADD_MONEY') {
+      return createJsonResponse(addMoney(monthlySheet, expensesSheet, payload.month, Number(payload.amount)));
     }
     
     if (action === 'ADD_EXPENSE') {
@@ -159,6 +163,7 @@ function getMonthlyData(monthlySheet, expensesSheet, targetMonth) {
     success: true,
     month: targetMonth,
     monthly_amount: monthlyAmount,
+    total_available: monthlyAmount,
     monthlyBudgets: monthlyBudgets,
     expenses: expenses,
     totalSpent: totalSpent,
@@ -166,7 +171,7 @@ function getMonthlyData(monthlySheet, expensesSheet, targetMonth) {
   };
 }
 
-// 2. SET_MONTHLY_AMOUNT
+// 2. SET_MONTHLY_AMOUNT / START_MONTH
 function setMonthlyAmount(monthlySheet, expensesSheet, month, amount) {
   if (!month || amount <= 0) {
     return { success: false, error: 'Invalid month or amount' };
@@ -185,6 +190,7 @@ function setMonthlyAmount(monthlySheet, expensesSheet, month, amount) {
   const now = new Date().toISOString();
   if (foundRowIndex > 0) {
     monthlySheet.getRange(foundRowIndex, 2).setValue(amount);
+    monthlySheet.getRange(foundRowIndex, 3).setValue(now);
   } else {
     monthlySheet.appendRow([month, amount, now]);
   }
@@ -192,7 +198,39 @@ function setMonthlyAmount(monthlySheet, expensesSheet, month, amount) {
   return getMonthlyData(monthlySheet, expensesSheet, month);
 }
 
-// 3. ADD_EXPENSE (with concurrency & overspending validation)
+// 3. ADD_MONEY (Cumulative Addition: New Total = Current Total + Added Amount)
+function addMoney(monthlySheet, expensesSheet, month, additionalAmount) {
+  const addVal = Math.round(Number(additionalAmount));
+  if (!month || addVal <= 0) {
+    return { success: false, error: 'Please enter a valid amount greater than ₹0' };
+  }
+  
+  const monthlyRows = monthlySheet.getDataRange().getValues();
+  let foundRowIndex = -1;
+  let currentTotal = 0;
+  
+  for (let i = 1; i < monthlyRows.length; i++) {
+    if (String(monthlyRows[i][0] || '').trim() === month) {
+      foundRowIndex = i + 1;
+      currentTotal = Number(monthlyRows[i][1]) || 0;
+      break;
+    }
+  }
+  
+  const newTotal = currentTotal + addVal;
+  const now = new Date().toISOString();
+  
+  if (foundRowIndex > 0) {
+    monthlySheet.getRange(foundRowIndex, 2).setValue(newTotal);
+    monthlySheet.getRange(foundRowIndex, 3).setValue(now);
+  } else {
+    monthlySheet.appendRow([month, newTotal, now]);
+  }
+  
+  return getMonthlyData(monthlySheet, expensesSheet, month);
+}
+
+// 4. ADD_EXPENSE (with concurrency & overspending validation)
 function addExpense(monthlySheet, expensesSheet, payload) {
   const month = payload.month;
   const amount = Math.round(Number(payload.amount));
@@ -227,7 +265,7 @@ function addExpense(monthlySheet, expensesSheet, payload) {
   return getMonthlyData(monthlySheet, expensesSheet, month);
 }
 
-// 4. UPDATE_EXPENSE
+// 5. UPDATE_EXPENSE
 function updateExpense(monthlySheet, expensesSheet, payload) {
   const id = String(payload.id);
   const newAmount = Math.round(Number(payload.amount));
@@ -277,7 +315,7 @@ function updateExpense(monthlySheet, expensesSheet, payload) {
   return getMonthlyData(monthlySheet, expensesSheet, expMonth);
 }
 
-// 5. DELETE_EXPENSE
+// 6. DELETE_EXPENSE
 function deleteExpense(expensesSheet, id) {
   if (!id) return { success: false, error: 'Expense ID required' };
   
@@ -291,7 +329,7 @@ function deleteExpense(expensesSheet, id) {
   return { success: false, error: 'Expense not found' };
 }
 
-// 6. GET_SUMMARY
+// 7. GET_SUMMARY
 function getSummary(monthlySheet, expensesSheet, targetMonth) {
   const data = getMonthlyData(monthlySheet, expensesSheet, targetMonth);
   const categoryMap = {};
@@ -313,6 +351,7 @@ function getSummary(monthlySheet, expensesSheet, targetMonth) {
     success: true,
     month: targetMonth,
     monthly_amount: data.monthly_amount,
+    total_available: data.monthly_amount,
     total_spent: data.totalSpent,
     remaining_money: data.remainingMoney,
     category_summary: categorySummary

@@ -1,10 +1,10 @@
 import React, { useState } from 'react';
-import { ArrowRight, Wallet } from 'lucide-react';
+import { ArrowRight, Wallet, Loader2 } from 'lucide-react';
 import { formatMonthLabel } from '../utils/format';
 
 interface InitialSetupProps {
   monthKey: string;
-  onSetInitial: (amount: number, note?: string) => { success: boolean; error?: string };
+  onSetInitial: (amount: number, note?: string) => { success: boolean; error?: string } | Promise<{ success: boolean; error?: string }>;
 }
 
 export const InitialSetup: React.FC<InitialSetupProps> = ({
@@ -13,27 +13,30 @@ export const InitialSetup: React.FC<InitialSetupProps> = ({
 }) => {
   const [amountStr, setAmountStr] = useState<string>('');
   const [error, setError] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
 
   const numericAmount = Number(amountStr.replace(/[^0-9]/g, '')) || 0;
   const monthTitle = formatMonthLabel(monthKey);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (numericAmount <= 0) {
       setError('Please enter an amount greater than ₹0');
       return;
     }
 
+    setIsSubmitting(true);
     setError(null);
-    const res = onSetInitial(numericAmount, `Initial Budget for ${monthTitle}`);
+    const res = await Promise.resolve(onSetInitial(numericAmount, `Starting Budget for ${monthTitle}`));
+    setIsSubmitting(false);
 
     if (!res.success) {
-      setError(res.error || 'Failed to save initial amount');
+      setError(res.error || 'Failed to save starting monthly amount');
     }
   };
 
   return (
-    <div id="initial-setup-screen" className="min-h-screen bg-slate-100 flex flex-col justify-center items-center px-4 py-8">
+    <div id="initial-setup-screen" className="min-h-screen bg-slate-100/80 flex flex-col justify-center items-center px-4 py-8">
       <div className="w-full max-w-md bg-white rounded-3xl p-6 sm:p-8 shadow-sm border border-slate-200/80">
         {/* Header Icon */}
         <div className="flex flex-col items-center text-center mb-6">
@@ -41,7 +44,7 @@ export const InitialSetup: React.FC<InitialSetupProps> = ({
             <Wallet className="w-8 h-8" />
           </div>
           <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight">
-            Initial Monthly Amount
+            Add Monthly Money
           </h1>
           <p className="text-slate-500 text-sm mt-1">
             Enter starting amount for <strong>{monthTitle}</strong>
@@ -78,21 +81,30 @@ export const InitialSetup: React.FC<InitialSetupProps> = ({
             )}
           </div>
 
-          {/* Action Button */}
+          {/* Action Button: Start Month */}
           <button
-            id="add-initial-amount-btn"
+            id="start-month-btn"
             type="submit"
-            disabled={numericAmount <= 0}
+            disabled={numericAmount <= 0 || isSubmitting}
             className="w-full py-4 px-6 bg-emerald-600 hover:bg-emerald-700 active:scale-[0.99] disabled:bg-slate-200 disabled:text-slate-400 disabled:cursor-not-allowed text-white font-bold text-base rounded-2xl shadow-sm hover:shadow transition-all flex items-center justify-center gap-2 cursor-pointer"
           >
-            <span>Set Monthly Budget</span>
-            <ArrowRight className="w-5 h-5" />
+            {isSubmitting ? (
+              <>
+                <Loader2 className="w-5 h-5 animate-spin" />
+                <span>Starting Month...</span>
+              </>
+            ) : (
+              <>
+                <span>Start Month</span>
+                <ArrowRight className="w-5 h-5" />
+              </>
+            )}
           </button>
         </form>
 
         <div className="mt-6 pt-4 border-t border-slate-100 text-center">
           <p className="text-xs text-slate-400">
-            Expenses will be automatically subtracted from your balance.
+            Shared balance will sync automatically across all family devices.
           </p>
         </div>
       </div>

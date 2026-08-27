@@ -1,5 +1,5 @@
 import React from 'react';
-import { Plus, Edit3, AlertCircle } from 'lucide-react';
+import { Plus, Minus, AlertCircle, PlusCircle } from 'lucide-react';
 import { formatINR, formatMonthLabel } from '../utils/format';
 
 interface MainBalanceCardProps {
@@ -8,7 +8,7 @@ interface MainBalanceCardProps {
   monthlyAmount: number;
   totalSpent: number;
   onOpenAddExpense: () => void;
-  onEditMonthlyAmount: () => void;
+  onOpenAddMoney: () => void;
 }
 
 export const MainBalanceCard: React.FC<MainBalanceCardProps> = ({
@@ -17,7 +17,7 @@ export const MainBalanceCard: React.FC<MainBalanceCardProps> = ({
   monthlyAmount,
   totalSpent,
   onOpenAddExpense,
-  onEditMonthlyAmount,
+  onOpenAddMoney,
 }) => {
   const isZero = remainingMoney === 0;
   const monthTitle = formatMonthLabel(monthKey);
@@ -27,7 +27,7 @@ export const MainBalanceCard: React.FC<MainBalanceCardProps> = ({
       {/* Top Month Header */}
       <div className="flex items-center justify-between mb-2">
         <span className="text-xs font-bold uppercase tracking-wider text-slate-400">
-          {monthTitle.toUpperCase()}
+          This Month ({monthTitle})
         </span>
         {isZero && (
           <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-rose-600 bg-rose-50 px-2 py-0.5 rounded-full">
@@ -37,7 +37,7 @@ export const MainBalanceCard: React.FC<MainBalanceCardProps> = ({
         )}
       </div>
 
-      {/* Main Big Remaining Number */}
+      {/* Main Big Remaining Balance Number */}
       <div className="text-center py-2">
         <div
           id="remaining-money-display"
@@ -58,43 +58,47 @@ export const MainBalanceCard: React.FC<MainBalanceCardProps> = ({
         )}
       </div>
 
-      {/* Monthly Amount & Total Spent Sub-grid */}
-      <div className="grid grid-cols-2 gap-2 mt-4 p-3 bg-slate-50 rounded-2xl border border-slate-100">
+      {/* Monthly Money & Total Spent Sub-grid */}
+      <div className="grid grid-cols-2 gap-2 mt-4 p-3.5 bg-slate-50 rounded-2xl border border-slate-100">
         <div className="flex flex-col pl-1">
-          <div className="flex items-center gap-1">
-            <span className="text-[11px] font-medium text-slate-400">Monthly Amount</span>
-            <button
-              type="button"
-              onClick={onEditMonthlyAmount}
-              title="Edit Monthly Amount"
-              className="text-slate-400 hover:text-slate-600 cursor-pointer p-0.5"
-            >
-              <Edit3 className="w-2.5 h-2.5" />
-            </button>
-          </div>
-          <span id="monthly-amount-display" className="text-base font-extrabold text-slate-800">
+          <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Monthly Money</span>
+          <span id="monthly-amount-display" className="text-lg font-extrabold text-slate-800 mt-0.5">
             {formatINR(monthlyAmount)}
           </span>
         </div>
 
-        <div className="flex flex-col border-l border-slate-200/80 pl-3">
-          <span className="text-[11px] font-medium text-slate-400">Total Spent</span>
-          <span id="total-spent-display" className="text-base font-extrabold text-rose-600">
+        <div className="flex flex-col border-l border-slate-200/80 pl-3.5">
+          <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Total Spent</span>
+          <span id="total-spent-display" className="text-lg font-extrabold text-rose-600 mt-0.5">
             {formatINR(totalSpent)}
           </span>
         </div>
       </div>
 
-      {/* Large Prominent + ADD EXPENSE Button */}
-      <button
-        id="add-expense-btn"
-        type="button"
-        onClick={onOpenAddExpense}
-        className="w-full mt-4 py-4 px-6 bg-rose-600 hover:bg-rose-700 active:scale-[0.99] text-white font-bold text-base rounded-2xl shadow-sm hover:shadow transition-all flex items-center justify-center gap-2 cursor-pointer"
-      >
-        <Plus className="w-5 h-5 stroke-[2.5]" />
-        <span>+ Add Expense</span>
-      </button>
+      {/* Dual Action Buttons: + Add Money and - Add Expense */}
+      <div className="grid grid-cols-2 gap-3 mt-4">
+        {/* + Add Money Button */}
+        <button
+          id="open-add-money-btn"
+          type="button"
+          onClick={onOpenAddMoney}
+          className="py-3.5 px-4 bg-emerald-600 hover:bg-emerald-700 active:scale-[0.99] text-white font-bold text-sm sm:text-base rounded-2xl shadow-xs hover:shadow transition-all flex items-center justify-center gap-2 cursor-pointer"
+        >
+          <PlusCircle className="w-4 h-4 sm:w-5 sm:h-5 stroke-[2.5]" />
+          <span>+ Add Money</span>
+        </button>
+
+        {/* - Add Expense Button */}
+        <button
+          id="add-expense-btn"
+          type="button"
+          onClick={onOpenAddExpense}
+          className="py-3.5 px-4 bg-rose-600 hover:bg-rose-700 active:scale-[0.99] text-white font-bold text-sm sm:text-base rounded-2xl shadow-xs hover:shadow transition-all flex items-center justify-center gap-2 cursor-pointer"
+        >
+          <Minus className="w-4 h-4 sm:w-5 sm:h-5 stroke-[2.5]" />
+          <span>− Add Expense</span>
+        </button>
+      </div>
     </div>
   );
 };

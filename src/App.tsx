@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useExpenseTracker } from './hooks/useExpenseTracker';
 import { InitialSetup } from './components/InitialSetup';
 import { Header } from './components/Header';
@@ -6,6 +6,7 @@ import { MainBalanceCard } from './components/MainBalanceCard';
 import { ExpenseHistoryList } from './components/ExpenseHistoryList';
 import { CategorySpendingSummary } from './components/CategorySpendingSummary';
 import { AddExpenseModal } from './components/AddExpenseModal';
+import { AddMoneyModal } from './components/AddMoneyModal';
 import { EditExpenseModal } from './components/EditExpenseModal';
 import { EditMonthlyAmountModal } from './components/EditMonthlyAmountModal';
 import { FamilyAuthScreen } from './components/FamilyAuthScreen';
@@ -31,6 +32,8 @@ export default function App() {
     categorySummary,
     syncStatus,
     isConfigured,
+    startMonth,
+    addMoney,
     setMonthlyAmount,
     addExpense,
     editExpense,
@@ -41,6 +44,7 @@ export default function App() {
 
   // Modal states
   const [isAddExpenseOpen, setIsAddExpenseOpen] = useState(false);
+  const [isAddMoneyOpen, setIsAddMoneyOpen] = useState(false);
   const [isEditMonthlyOpen, setIsEditMonthlyOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
@@ -74,14 +78,14 @@ export default function App() {
     );
   }
 
-  // 2. If no monthly budget set for the selected month, prompt for initial monthly amount
+  // 2. If no monthly budget set for the selected month, prompt for initial monthly amount (Start Month)
   if (!isInitialized) {
     return (
       <>
         <InitialSetup
           monthKey={selectedMonth}
           onSetInitial={(amt, note) => {
-            return setMonthlyAmount(amt, note);
+            return startMonth(amt, note);
           }}
         />
         <GoogleSheetsConfigModal
@@ -110,14 +114,14 @@ export default function App() {
 
       {/* Main Container constrained to mobile max-width */}
       <main className="w-full max-w-md px-3 sm:px-4 flex-1">
-        {/* 1. Main Balance Card (Remaining Money = Monthly Amount - Total Expenses) */}
+        {/* 1. Main Balance Card (Remaining Money = Monthly Amount - Total Expenses, + Add Money and - Add Expense) */}
         <MainBalanceCard
           monthKey={selectedMonth}
           remainingMoney={remainingMoney}
           monthlyAmount={monthlyAmount}
           totalSpent={totalSpent}
           onOpenAddExpense={() => setIsAddExpenseOpen(true)}
-          onEditMonthlyAmount={() => setIsEditMonthlyOpen(true)}
+          onOpenAddMoney={() => setIsAddMoneyOpen(true)}
         />
 
         {/* 2. Recent Spending (Expense cards with edit & delete) */}
@@ -140,6 +144,14 @@ export default function App() {
         onClose={() => setIsAddExpenseOpen(false)}
         onSaveExpense={addExpense}
         remainingMoney={remainingMoney}
+      />
+
+      <AddMoneyModal
+        isOpen={isAddMoneyOpen}
+        onClose={() => setIsAddMoneyOpen(false)}
+        currentAmount={monthlyAmount}
+        monthKey={selectedMonth}
+        onAddMoney={addMoney}
       />
 
       <EditExpenseModal

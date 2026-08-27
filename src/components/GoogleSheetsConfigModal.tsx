@@ -19,7 +19,7 @@ function getOrCreateSheets() {
   let monthlySheet = ss.getSheetByName(MONTHLY_SHEET_NAME);
   if (!monthlySheet) {
     monthlySheet = ss.insertSheet(MONTHLY_SHEET_NAME);
-    monthlySheet.appendRow(['month', 'monthly_amount', 'created_at']);
+    monthlySheet.appendRow(['month', 'total_available', 'updated_at']);
     monthlySheet.setFrozenRows(1);
   }
   let expensesSheet = ss.getSheetByName(EXPENSES_SHEET_NAME);
@@ -59,7 +59,12 @@ function doPost(e) {
       payload = e.parameter;
     }
     const action = payload.action || 'GET_MONTHLY_DATA';
-    if (action === 'SET_MONTHLY_AMOUNT') return createJsonResponse(setMonthlyAmount(monthlySheet, expensesSheet, payload.month, Number(payload.amount)));
+    if (action === 'START_MONTH' || action === 'SET_MONTHLY_AMOUNT') {
+      return createJsonResponse(setMonthlyAmount(monthlySheet, expensesSheet, payload.month, Number(payload.amount)));
+    }
+    if (action === 'ADD_MONEY') {
+      return createJsonResponse(addMoney(monthlySheet, expensesSheet, payload.month, Number(payload.amount)));
+    }
     if (action === 'ADD_EXPENSE') return createJsonResponse(addExpense(monthlySheet, expensesSheet, payload));
     if (action === 'UPDATE_EXPENSE') return createJsonResponse(updateExpense(monthlySheet, expensesSheet, payload));
     if (action === 'DELETE_EXPENSE') return createJsonResponse(deleteExpense(expensesSheet, payload.id));
@@ -100,7 +105,7 @@ function getMonthlyData(monthlySheet, expensesSheet, targetMonth) {
   const monthlyAmount = targetMonth ? (monthlyBudgets[targetMonth] || 0) : 0;
   const totalSpent = expenses.reduce((acc, curr) => acc + (Number(curr.amount) || 0), 0);
   const remainingMoney = Math.max(0, monthlyAmount - totalSpent);
-  return { success: true, month: targetMonth, monthly_amount: monthlyAmount, monthlyBudgets: monthlyBudgets, expenses: expenses, totalSpent: totalSpent, remainingMoney: remainingMoney };
+  return { success: true, month: targetMonth, monthly_amount: monthlyAmount, total_available: monthlyAmount, monthlyBudgets: monthlyBudgets, expenses: expenses, totalSpent: totalSpent, remainingMoney: remainingMoney };
 }
 
 function setMonthlyAmount(monthlySheet, expensesSheet, month, amount) {
@@ -116,8 +121,33 @@ function setMonthlyAmount(monthlySheet, expensesSheet, month, amount) {
   const now = new Date().toISOString();
   if (foundRowIndex > 0) {
     monthlySheet.getRange(foundRowIndex, 2).setValue(amount);
+    monthlySheet.getRange(foundRowIndex, 3).setValue(now);
   } else {
     monthlySheet.appendRow([month, amount, now]);
+  }
+  return getMonthlyData(monthlySheet, expensesSheet, month);
+}
+
+function addMoney(monthlySheet, expensesSheet, month, additionalAmount) {
+  const addVal = Math.round(Number(additionalAmount));
+  if (!month || addVal <= 0) return { success: false, error: 'Invalid amount' };
+  const monthlyRows = monthlySheet.getDataRange().getValues();
+  let foundRowIndex = -1;
+  let currentTotal = 0;
+  for (let i = 1; i < monthlyRows.length; i++) {
+    if (String(monthlyRows[i][0] || '').trim() === month) {
+      foundRowIndex = i + 1;
+      currentTotal = Number(monthlyRows[i][1]) || 0;
+      break;
+    }
+  }
+  const newTotal = currentTotal + addVal;
+  const now = new Date().toISOString();
+  if (foundRowIndex > 0) {
+    monthlySheet.getRange(foundRowIndex, 2).setValue(newTotal);
+    monthlySheet.getRange(foundRowIndex, 3).setValue(now);
+  } else {
+    monthlySheet.appendRow([month, newTotal, now]);
   }
   return getMonthlyData(monthlySheet, expensesSheet, month);
 }

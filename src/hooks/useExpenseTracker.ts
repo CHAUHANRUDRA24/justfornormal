@@ -177,8 +177,8 @@ export function useExpenseTracker() {
     return Array.from(set).sort().reverse();
   }, [data.monthlyBudgets, data.expenses, selectedMonth]);
 
-  // Set Monthly Budget
-  const setMonthlyAmount = useCallback(
+  // Start Month / Set Initial Monthly Budget
+  const startMonth = useCallback(
     async (amount: number, _note?: string) => {
       const numAmount = Math.round(Number(amount));
       if (numAmount <= 0) return { success: false, error: 'Please enter a valid amount greater than ₹0' };
@@ -213,6 +213,55 @@ export function useExpenseTracker() {
       return { success: true };
     },
     [selectedMonth, refreshData]
+  );
+
+  // Add Money (Cumulative: Total = Current Total + Additional Money)
+  const addMoney = useCallback(
+    async (additionalAmount: number, _note?: string) => {
+      const addVal = Math.round(Number(additionalAmount));
+      if (addVal <= 0) return { success: false, error: 'Please enter an amount greater than ₹0' };
+
+      // Optimistic update
+      setData((prev) => {
+        const currentBudget = prev.monthlyBudgets[selectedMonth] || 0;
+        return {
+          ...prev,
+          monthlyBudgets: {
+            ...prev.monthlyBudgets,
+            [selectedMonth]: currentBudget + addVal,
+          },
+        };
+      });
+
+      // Remote sync with Google Sheets
+      if (isGoogleSheetsConfigured()) {
+        setSyncStatus('syncing');
+        try {
+          const res = await googleSheetsService.addMoney(selectedMonth, addVal);
+          if (res && res.success) {
+            setSyncStatus('synced');
+            refreshData(false);
+          } else {
+            setSyncStatus('error');
+            if (res?.error) return { success: false, error: res.error };
+          }
+        } catch (err: any) {
+          setSyncStatus('error');
+          console.error(err);
+        }
+      }
+
+      return { success: true };
+    },
+    [selectedMonth, refreshData]
+  );
+
+  // Set Monthly Budget
+  const setMonthlyAmount = useCallback(
+    async (amount: number, note?: string) => {
+      return await startMonth(amount, note);
+    },
+    [startMonth]
   );
 
   // Add Expense
@@ -445,6 +494,8 @@ export function useExpenseTracker() {
     syncStatus,
     error,
     isConfigured,
+    startMonth,
+    addMoney,
     setMonthlyAmount,
     addExpense,
     editExpense,

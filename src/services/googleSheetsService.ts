@@ -73,12 +73,17 @@ export const googleSheetsService = {
     return await callAppsScript('GET_MONTHLY_DATA', { month });
   },
 
-  // 2. Set monthly budget amount
+  // 2. Set monthly budget amount / Start Month
   async setMonthlyAmount(month: string, amount: number): Promise<MonthlyDataResponse> {
     return await callAppsScript('SET_MONTHLY_AMOUNT', { month, amount });
   },
 
-  // 3. Add an expense
+  // 3. Add Money (Increment monthly total cumulatively)
+  async addMoney(month: string, amount: number): Promise<MonthlyDataResponse> {
+    return await callAppsScript('ADD_MONEY', { month, amount });
+  },
+
+  // 4. Add an expense
   async addExpense(expense: {
     month: string;
     amount: number;
@@ -89,7 +94,7 @@ export const googleSheetsService = {
     return await callAppsScript('ADD_EXPENSE', expense);
   },
 
-  // 4. Update an expense
+  // 5. Update an expense
   async updateExpense(expense: {
     id: string;
     month: string;
@@ -101,12 +106,12 @@ export const googleSheetsService = {
     return await callAppsScript('UPDATE_EXPENSE', expense);
   },
 
-  // 5. Delete an expense
+  // 6. Delete an expense
   async deleteExpense(id: string, month: string): Promise<{ success: boolean; error?: string }> {
     return await callAppsScript('DELETE_EXPENSE', { id, month });
   },
 
-  // 6. Get summary
+  // 7. Get summary
   async getSummary(month: string): Promise<any> {
     return await callAppsScript('GET_SUMMARY', { month });
   },
